@@ -5,8 +5,8 @@
 
 void setupNanoFlasher();
 void handleNanoFlasher();
+void triggerNanoReset(); // <--- ודא ששורה זו קיימת בקובץ ה-.h
 
-// פונקציה ראשית לצריבה מתוך זיכרון/סטרים
 bool flashNanoHex(const uint8_t* hexData, size_t hexLen);
 
 #endif

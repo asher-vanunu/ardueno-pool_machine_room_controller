@@ -14,6 +14,7 @@ void sendNanoSetTOFF(float val);
 void sendNanoSetDTO(float val);
 void sendNanoSetDTF(float val);
 void sendNanoSave();
+void sendNanoResetDefault();
 
 // פונקציות עבור צורב הנאנו (NanoFlasher)
 void pauseArduinoComm();

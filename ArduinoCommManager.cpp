@@ -49,6 +49,10 @@ void sendNanoSave() {
   SerialNano.println("CMD:SAVE");
 }
 
+void sendNanoResetDefault() {
+  SerialNano.println("CMD:DEFAULT");
+}
+
 static void parseNanoJSON(const String& jsonStr) {
   StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, jsonStr);

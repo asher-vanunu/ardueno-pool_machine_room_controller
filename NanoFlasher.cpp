@@ -19,7 +19,7 @@ static uint8_t pageBuffer[NANO_PAGE_SIZE];
 static uint16_t currentPageStart = 0;
 static bool pageHasData = false;
 
-static void resetNano() {
+void triggerNanoReset() {
   pinMode(NANO_RESET_PIN, OUTPUT);
   digitalWrite(NANO_RESET_PIN, HIGH);
   delay(50);
@@ -132,6 +132,54 @@ static bool parseAndFlashRecord(const String &line) {
   return true;
 }
 
+bool flashNanoHex(const uint8_t* hexData, size_t hexLen) {
+  if (hexData == nullptr || hexLen == 0) return false;
+
+  pauseArduinoComm();
+  pageHasData = false;
+  memset(pageBuffer, 0xFF, NANO_PAGE_SIZE);
+
+  HardwareSerial &serial = getNanoSerial();
+  serial.begin(57600, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
+
+  triggerNanoReset();
+
+  if (!stkSendSync()) {
+    Serial.println("[NanoFlasher] Error: Could not sync with Bootloader!");
+    resumeArduinoComm();
+    return false;
+  }
+
+  String currentLine = "";
+  for (size_t i = 0; i < hexLen; i++) {
+    char c = (char)hexData[i];
+    if (c == '\r' || c == '\n') {
+      if (currentLine.length() > 0) {
+        if (!parseAndFlashRecord(currentLine)) {
+          resumeArduinoComm();
+          return false;
+        }
+        currentLine = "";
+      }
+    } else {
+      currentLine += c;
+    }
+  }
+
+  if (currentLine.length() > 0) {
+    parseAndFlashRecord(currentLine);
+  }
+
+  if (pageHasData) {
+    stkWritePage(currentPageStart, pageBuffer, NANO_PAGE_SIZE);
+    pageHasData = false;
+  }
+
+  triggerNanoReset();
+  resumeArduinoComm();
+  return true;
+}
+
 static const char* nanoUploadPage = 
   "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Arduino Nano OTA Flasher</title>"
   "<style>body{font-family:Arial;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#e9ecef;direction:rtl;}"
@@ -161,7 +209,7 @@ void setupNanoFlasher() {
   });
 
   nanoServer.on("/reset_nano", HTTP_GET, []() {
-    resetNano();
+    triggerNanoReset();
     nanoServer.send(200, "text/plain", "Nano Reset Triggered!");
   });
 
@@ -191,13 +239,13 @@ void setupNanoFlasher() {
       HardwareSerial &serial = getNanoSerial();
       serial.begin(57600, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
 
-      resetNano();
+      triggerNanoReset();
 
       if (!stkSendSync()) {
-        Serial.println("[NanoFlasher] Error: Could not sync with Optiboot!");
+        Serial.println("[NanoFlasher] Error: Could not sync with Bootloader!");
         flashSuccess = false;
       } else {
-        Serial.println("[NanoFlasher] Optiboot Synced!");
+        Serial.println("[NanoFlasher] Bootloader Synced!");
       }
     } 
     else if (upload.status == UPLOAD_FILE_WRITE && flashSuccess) {
@@ -224,7 +272,7 @@ void setupNanoFlasher() {
         stkWritePage(currentPageStart, pageBuffer, NANO_PAGE_SIZE);
       }
       Serial.println("[NanoFlasher] Firmware flashed completely.");
-      resetNano();
+      triggerNanoReset();
     }
   });
 

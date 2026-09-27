@@ -4,6 +4,7 @@
 #include "ArduinoCommManager.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include "NanoFlasher.h"
 
 static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
@@ -117,9 +118,23 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   else if (strcmp(topic, "pool/heating/save") == 0) {
     sendNanoSave();
   }
+  else if (strcmp(topic, "pool/heating/reset_default") == 0) {
+    Serial.println("[MQTT] Received Reset Defaults command for Nano");
+    sendNanoResetDefault();
+  }
   else if (strcmp(topic, "pool/heating/set_system_mode") == 0) {
     setSystemPower(strcmp(message, "ON") == 0);
   }
+  else if (strcmp(topic, "pool/control/nano_reset/set") == 0) {
+    Serial.println("[MQTT] Received Reset command for Nano");
+    triggerNanoReset();
+  } 
+  else if (strcmp(topic, "pool/control/esp_reset/set") == 0) {
+    Serial.println("[MQTT] Received Reboot command for ESP32");
+    delay(100);
+    ESP.restart();
+  }
+  
 }
 
 static void reconnectMQTT() {
@@ -146,7 +161,10 @@ static void reconnectMQTT() {
         mqttClient.subscribe("pool/heating/set_dto");
         mqttClient.subscribe("pool/heating/set_dtf");
         mqttClient.subscribe("pool/heating/save");
+        mqttClient.subscribe("pool/heating/reset_default");
         mqttClient.subscribe("pool/heating/set_system_mode");
+        mqttClient.subscribe("pool/control/nano_reset/set");
+        mqttClient.subscribe("pool/control/esp_reset/set");
 
         // פרסום מצב המערכת הנוכחי (retained) כדי ש-HA ידע את המצב
         publishSystemMode(digitalRead(SYSTEM_POWER_RELAY_PIN) == HIGH);

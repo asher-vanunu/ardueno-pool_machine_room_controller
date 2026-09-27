@@ -13,6 +13,9 @@
 #define RELAY_PUMP_PIN   26
 #define BOOT_BUTTON_PIN  0
 
+// ממסר ניתוק החשמל ל-Arduino Nano - ה-ESP32 שולט בהפעלת/כיבוי המערכת כולה
+#define SYSTEM_POWER_RELAY_PIN  27
+
 // --- Aquagem Modbus RS485 Settings ---
 #define RS485_RX_PIN     14     // פין RO במודול MAX485
 #define RS485_TX_PIN     13     // פין DI במודול MAX485

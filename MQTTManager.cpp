@@ -63,6 +63,17 @@ void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO,
   mqttClient.publish("pool/heating/DT_F", String(dtF, 1).c_str(), true);
 }
 
+void publishSystemMode(bool isOn) {
+  if (!mqttClient.connected()) return;
+  mqttClient.publish("pool/heating/system_mode", isOn ? "ON" : "OFF", true);
+}
+
+void setSystemPower(bool isOn) {
+  digitalWrite(SYSTEM_POWER_RELAY_PIN, isOn ? HIGH : LOW);
+  Serial.printf("[SYSTEM] Arduino power %s\n", isOn ? "ON" : "OFF");
+  publishSystemMode(isOn);
+}
+
 static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   char message[32];
   if (length >= sizeof(message)) length = sizeof(message) - 1;
@@ -106,6 +117,9 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   else if (strcmp(topic, "pool/heating/save") == 0) {
     sendNanoSave();
   }
+  else if (strcmp(topic, "pool/heating/set_system_mode") == 0) {
+    setSystemPower(strcmp(message, "ON") == 0);
+  }
 }
 
 static void reconnectMQTT() {
@@ -132,6 +146,10 @@ static void reconnectMQTT() {
         mqttClient.subscribe("pool/heating/set_dto");
         mqttClient.subscribe("pool/heating/set_dtf");
         mqttClient.subscribe("pool/heating/save");
+        mqttClient.subscribe("pool/heating/set_system_mode");
+
+        // פרסום מצב המערכת הנוכחי (retained) כדי ש-HA ידע את המצב
+        publishSystemMode(digitalRead(SYSTEM_POWER_RELAY_PIN) == HIGH);
       } else {
         Serial.printf(" Failed, rc=%d\n", mqttClient.state());
       }

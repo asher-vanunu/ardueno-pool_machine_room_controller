@@ -13,4 +13,8 @@ void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int st
 // פונקציה חדשה לפרסום הגדרות החימום ל-MQTT
 void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO, float dtF);
 
+// פרסום מצב המערכת (ON/OFF) - שליטה בחשמל ל-Arduino
+void publishSystemMode(bool isOn);
+void setSystemPower(bool isOn);
+
 #endif

@@ -181,21 +181,113 @@ bool flashNanoHex(const uint8_t* hexData, size_t hexLen) {
 }
 
 static const char* nanoUploadPage = 
-  "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Arduino Nano OTA Flasher</title>"
-  "<style>body{font-family:Arial;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#e9ecef;direction:rtl;}"
-  ".box{background:white;padding:30px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,0.15);text-align:center;width:340px;}"
-  "input{margin:20px 0;width:100%;} button{background:#28a745;color:white;border:none;padding:12px;border-radius:6px;cursor:pointer;font-size:16px;width:100%;font-weight:bold;margin-bottom:10px;}"
-  "button:hover{background:#218838;} .btn-reset{background:#ffc107;color:#212529;} .btn-reset:hover{background:#e0a800;}"
-  ".btn-esp{background:#dc3545;color:white;} .btn-esp:hover{background:#c82333;}</style></head><body>"
-  "<div class='box'><h2>צריבת Arduino Nano</h2>"
+  "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Solar Manager & Diagnostic v5</title>"
+  "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+  "<style>"
+  "body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:flex-start;gap:20px;min-height:100vh;margin:0;padding:25px;background:#e9ecef;direction:rtl;flex-wrap:wrap;box-sizing:border-box;}"
+  ".box{background:white;padding:25px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,0.15);width:350px;box-sizing:border-box;text-align:center;}"
+  ".box-log{width:540px;max-width:100%;text-align:right;}"
+  "input{margin:15px 0;width:100%;} "
+  "button{color:white;border:none;padding:12px;border-radius:6px;cursor:pointer;font-size:15px;width:100%;font-weight:bold;margin-bottom:10px;transition:0.2s;}"
+  "button:hover{opacity:0.9;}"
+  "button:disabled{background:#6c757d !important;cursor:not-allowed;opacity:0.65;}"
+  ".btn-uart{background:#28a745;}"
+  ".btn-reset{background:#ffc107;color:#212529;} .btn-reset:hover{background:#e0a800;}"
+  ".btn-esp{background:#dc3545;color:white;} .btn-esp:hover{background:#c82333;}"
+  ".btn-start{background:#28a745;color:white;}"
+  ".btn-stop{background:#dc3545;color:white;}"
+  ".btn-save{background:#17a2b8;color:white;}"
+  ".console{background:#111;color:#00ff66;font-family:Consolas,monospace;font-size:12px;padding:12px;border-radius:6px;height:340px;overflow-y:auto;white-space:pre-wrap;text-align:left;direction:ltr;margin:12px 0;border:1px solid #333;box-shadow:inset 0 0 8px rgba(0,0,0,0.8);}"
+  ".status-indicator{font-size:14px;font-weight:bold;margin-bottom:10px;color:#444;}"
+  "</style></head><body>"
+
+  "<!-- מסגרת 1: צריבה ואיפוסים -->"
+  "<div class='box'>"
+  "<h2>צריבת Arduino Nano</h2>"
   "<p>בחר קובץ firmware.hex</p>"
   "<form method='POST' action='/upload_hex' enctype='multipart/form-data'>"
   "<input type='file' name='hex' accept='.hex' required><br>"
-  "<button type='submit'>צרוב לנאנו דרך UART</button>"
+  "<button type='submit' class='btn-uart'>צרוב לנאנו דרך UART</button>"
   "</form><hr style='margin:20px 0;'>"
   "<button class='btn-reset' onclick=\"fetch('/reset_nano').then(r=>r.text()).then(alert)\">בצע Reset ל-Nano</button>"
   "<button class='btn-esp' onclick=\"if(confirm('לאתחל את ה-ESP32?')) fetch('/reset_esp').then(r=>r.text()).then(alert)\">אתחל ESP32</button>"
-  "</div></body></html>";
+  "</div>"
+
+  "<!-- מסגרת 2: מוניטור לוג TakeLog -->"
+  "<div class='box box-log'>"
+  "<h2 style='text-align:center;'>Log Monitor</h2>"
+  "<div id='logStatus' class='status-indicator'>סטטוס: לוג מושבת</div>"
+  "<div style='display:flex;gap:10px;'>"
+  "<button class='btn-start' id='btnStart' onclick='doStart()'>התחל לוג</button>"
+  "<button class='btn-stop' id='btnStop' onclick='doStop()' disabled>הפסק לוג</button>"
+  "</div>"
+  "<div class='console' id='consoleBox'>[SYSTEM READY] לחץ 'התחל לוג' להפעלת רישום...</div>"
+  "<div style='display:flex;gap:10px;'>"
+  "<button class='btn-save' onclick='doSave()'>שמור לקובץ</button>"
+  "<button style='background:#343a40;width:35%;' onclick='doClear()'>נקה מסך</button>"
+  "</div>"
+  "</div>"
+
+  "<script>"
+  "var logData = '';"
+  "var timer = null;"
+
+  "function doStart() {"
+  "  document.getElementById('logStatus').innerHTML = 'סטטוס: <span style=\"color:#007bff;\">מתחבר...</span>';"
+  "  fetch('/log/start')"
+  "    .then(function(r){ return r.text(); })"
+  "    .then(function(res){"
+  "      document.getElementById('logStatus').innerHTML = 'סטטוס: <span style=\"color:#28a745;\">לוג מופעל (פעיל)</span>';"
+  "      document.getElementById('btnStart').disabled = true;"
+  "      document.getElementById('btnStop').disabled = false;"
+  "      if(!timer) timer = setInterval(poll, 1000);"
+  "    })"
+  "    .catch(function(err){ alert('שגיאה: ' + err); });"
+  "}"
+
+  "function doStop() {"
+  "  fetch('/log/stop')"
+  "    .then(function(){"
+  "      document.getElementById('logStatus').innerHTML = 'סטטוס: <span style=\"color:#dc3545;\">לוג מושבת</span>';"
+  "      document.getElementById('btnStart').disabled = false;"
+  "      document.getElementById('btnStop').disabled = true;"
+  "      if(timer) { clearInterval(timer); timer = null; }"
+  "    });"
+  "}"
+
+  "function poll() {"
+  "  fetch('/log/read')"
+  "    .then(function(r){ return r.text(); })"
+  "    .then(function(txt){"
+  "      if(txt && txt.length > 0) {"
+  "        logData += txt;"
+  "        var c = document.getElementById('consoleBox');"
+  "        if(c.textContent.indexOf('[SYSTEM READY') !== -1) c.textContent = '';"
+  "        c.textContent += txt;"
+  "        c.scrollTop = c.scrollHeight;"
+  "      }"
+  "    });"
+  "}"
+
+  "function doClear() {"
+  "  logData = '';"
+  "  document.getElementById('consoleBox').textContent = '';"
+  "}"
+
+  "function doSave() {"
+  "  if(!logData.trim()) { alert('אין נתוני לוג לשמירה!'); return; }"
+  "  var now = new Date();"
+  "  var pad = function(n){ return (n<10?'0':'') + n; };"
+  "  var name = 'Solar_Log_' + now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '_' + pad(now.getHours()) + '-' + pad(now.getMinutes()) + '-' + pad(now.getSeconds()) + '.txt';"
+  "  var blob = new Blob([logData], { type: 'text/plain;charset=utf-8' });"
+  "  var a = document.createElement('a');"
+  "  a.href = URL.createObjectURL(blob);"
+  "  a.download = name;"
+  "  document.body.appendChild(a);"
+  "  a.click();"
+  "  document.body.removeChild(a);"
+  "}"
+  "</script></body></html>";
 
 static String hexLineBuffer = "";
 static bool flashSuccess = true;
@@ -205,6 +297,9 @@ void setupNanoFlasher() {
   digitalWrite(NANO_RESET_PIN, HIGH);
 
   nanoServer.on("/", HTTP_GET, []() {
+    nanoServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    nanoServer.sendHeader("Pragma", "no-cache");
+    nanoServer.sendHeader("Expires", "0");
     nanoServer.send(200, "text/html", nanoUploadPage);
   });
 
@@ -217,6 +312,24 @@ void setupNanoFlasher() {
     nanoServer.send(200, "text/plain", "ESP32 Rebooting...");
     delay(500);
     ESP.restart();
+  });
+
+  nanoServer.on("/log/start", HTTP_GET, []() {
+    setNanoLogEnabled(true);
+    nanoServer.sendHeader("Cache-Control", "no-cache");
+    nanoServer.send(200, "text/plain", "STARTED");
+  });
+
+  nanoServer.on("/log/stop", HTTP_GET, []() {
+    setNanoLogEnabled(false);
+    nanoServer.sendHeader("Cache-Control", "no-cache");
+    nanoServer.send(200, "text/plain", "STOPPED");
+  });
+
+  nanoServer.on("/log/read", HTTP_GET, []() {
+    String logText = getLatestLogText();
+    nanoServer.sendHeader("Cache-Control", "no-cache");
+    nanoServer.send(200, "text/plain", logText);
   });
 
   nanoServer.on("/upload_hex", HTTP_POST, []() {

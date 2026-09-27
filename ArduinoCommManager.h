@@ -21,4 +21,10 @@ void pauseArduinoComm();
 void resumeArduinoComm();
 HardwareSerial& getNanoSerial();
 
+// פונקציות עבור שליטה בלוג הדיאגנוסטיקה
+void setNanoLogEnabled(bool enabled);
+bool isNanoLogEnabled();
+String getLatestLogText();
+void clearLogBuffer();
+
 #endif

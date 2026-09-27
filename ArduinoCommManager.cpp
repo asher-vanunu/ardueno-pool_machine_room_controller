@@ -8,6 +8,20 @@ extern void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, flo
 
 static HardwareSerial SerialNano(NANO_UART_NUM);
 static unsigned long lastPollTime = 0;
+static bool commPaused = false; // הגדרה בראש הקובץ לפני כל הפונקציות
+
+void pauseArduinoComm() {
+  commPaused = true;
+}
+
+void resumeArduinoComm() {
+  commPaused = false;
+  SerialNano.begin(NANO_BAUDRATE, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
+}
+
+HardwareSerial& getNanoSerial() {
+  return SerialNano;
+}
 
 void setupArduinoComm() {
   SerialNano.begin(NANO_BAUDRATE, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
@@ -63,6 +77,8 @@ static void parseNanoJSON(const String& jsonStr) {
 }
 
 void handleArduinoComm() {
+  if (commPaused) return;
+
   unsigned long now = millis();
   if (now - lastPollTime > 3000) {
     lastPollTime = now;

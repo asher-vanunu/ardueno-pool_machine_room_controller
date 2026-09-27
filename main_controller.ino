@@ -4,6 +4,7 @@
 #include "ModbusManager.h"
 #include "ArduinoCommManager.h"
 #include "OTAManager.h"
+#include "NanoFlasher.h"
 #include <Arduino.h>
 
 void print_board_info(void)
@@ -46,6 +47,7 @@ void setup() {
   setupMQTT();
   setupModbus();
   setupArduinoComm();
+  setupNanoFlasher();
 }
 
 void loop() {
@@ -54,4 +56,5 @@ void loop() {
   handleMQTT();
   handleModbus();
   handleArduinoComm();
+  handleNanoFlasher();
 }

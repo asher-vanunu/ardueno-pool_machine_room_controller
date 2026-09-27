@@ -19,6 +19,10 @@
 // הוסף לקובץ Config.h תחת Pin Definitions:
 #define NANO_RESET_PIN   4      // GPIO4 מחובר ל-RST של ה-Nano (דרך קבל 100nF)
 
+// הגדרת פינים עבור מודול שעון DS3231 (I2C)
+#define RTC_SDA_PIN      21
+#define RTC_SCL_PIN      22
+
 // --- Aquagem Modbus RS485 Settings ---
 #define RS485_RX_PIN     14     // פין RO במודול MAX485
 #define RS485_TX_PIN     13     // פין DI במודול MAX485

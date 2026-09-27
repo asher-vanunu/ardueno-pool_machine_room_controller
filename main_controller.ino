@@ -5,6 +5,7 @@
 #include "ArduinoCommManager.h"
 #include "OTAManager.h"
 #include "NanoFlasher.h"
+#include "TimeManager.h"
 #include <Arduino.h>
 
 void print_board_info(void)
@@ -42,6 +43,7 @@ void setup() {
   pinMode(SYSTEM_POWER_RELAY_PIN, OUTPUT);
   digitalWrite(SYSTEM_POWER_RELAY_PIN, HIGH);
 
+  setupRTC();            // <--- אתחול ה-RTC וסנכרון מיידי לשעון המערכת
   setupNetwork();
   setupOTA();            // <--- הפעלת שירות ה-OTA לאחר החיבור לרשת
   setupMQTT();
@@ -57,4 +59,12 @@ void loop() {
   handleModbus();
   handleArduinoComm();
   handleNanoFlasher();
+  handleTime();          // <--- בדיקה תקופתית ועדכון ה-DS3231 משעון הרשת
+
+  // הדפסת שעה כל 5 שניות לצורך מעקב ובדיקה
+  static unsigned long lastPrintTime = 0;
+  if (millis() - lastPrintTime >= 5000) {
+    lastPrintTime = millis();
+    printCurrentTime();
+  }
 }

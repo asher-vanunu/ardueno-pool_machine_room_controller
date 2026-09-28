@@ -5,6 +5,8 @@ WiFiManager wm;
 
 static unsigned long buttonPressStart = 0;
 static bool buttonStatePrevious = HIGH;
+static bool wasConnected = false; 
+static unsigned long lastReconnectAttempt = 0;
 
 static void configureWiFiCountry() {
   WiFi.mode(WIFI_STA);
@@ -21,28 +23,65 @@ static void configureWiFiCountry() {
 }
 
 void setupNetwork() {
-  WiFi.persistent(false); // מונע שחיקה של זיכרון ה-Flash
-  WiFi.disconnect(true, true); // ניתוק וניקוי הגדרות Wi-Fi מזיכרון ה-RAM
+  WiFi.persistent(false); 
+  WiFi.disconnect(true, true); 
   delay(200);
 
-  // 2. הגדרת מצב תחנה (Station) בלבד
   WiFi.mode(WIFI_STA);
-
-  // 3. ביטול מנגנון חיסכון בחשמל (Sleep Mode) - קריטי לראוטרים ביתיים!
   WiFi.setSleep(false);
   
+  WiFi.setAutoReconnect(true);
+  
   configureWiFiCountry();
-  wm.setConfigPortalTimeout(180);
+  
+  wm.setConfigPortalBlocking(false); 
+  wm.setConfigPortalTimeout(60);     
+  wm.setConnectTimeout(3); 
+
+  Serial.println("[Network] Starting network connection process...");
 
   bool res = wm.autoConnect("Pool-Controller-AP");
 
   if (!res) {
-    Serial.println("Failed to connect or hit timeout. Restarting...");
-    ESP.restart();
+    Serial.println("[Network] Could not connect immediately. Config Portal 'Pool-Controller-AP' started in background.");
+    wasConnected = false;
   } else {
-    Serial.println("\nWiFi Connected successfully!");
-    Serial.print("IP Address: ");
+    Serial.println("\n[Network] WiFi Connected successfully on boot!");
+    Serial.print("[Network] IP Address: ");
     Serial.println(WiFi.localIP());
+    wasConnected = true;
+  }
+}
+
+void handleNetwork() {
+  wm.process();
+
+  bool isConnected = (WiFi.status() == WL_CONNECTED);
+  unsigned long currentMillis = millis();
+
+  if (isConnected && !wasConnected) {
+    Serial.println("\n---------------------------------------------");
+    Serial.println("[Network Status] WiFi Reconnected Successfully!");
+    Serial.print("[Network Status] IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.println("---------------------------------------------\n");
+    wasConnected = true;
+  } 
+  else if (!isConnected && wasConnected) {
+    Serial.println("\n---------------------------------------------");
+    Serial.println("[Network Status] WiFi Disconnected! Polling Arduino continues in offline mode...");
+    Serial.println("---------------------------------------------\n");
+    wasConnected = false;
+    lastReconnectAttempt = currentMillis; // התחלת ספירה לאחור לניסיון חיבור מחדש
+  }
+
+  // הפעלת פקודת התחברות יזומה ואגרסיבית כל 10 שניות כדי להתגבר על חוסר התגובה של הראוטר
+  if (!isConnected && (currentMillis - lastReconnectAttempt >= 10000)) {
+    lastReconnectAttempt = currentMillis;
+    if (!wm.getConfigPortalActive()) {
+      Serial.println("[Network] Attempting active background reconnect to WiFi...");
+      WiFi.reconnect(); // ניסיון התחברות שלא תוקע את הלולאה
+    }
   }
 }
 

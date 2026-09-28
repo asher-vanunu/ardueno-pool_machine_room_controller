@@ -7,6 +7,7 @@
 
 // Initialize network interfaces and WiFiManager
 void setupNetwork();
+void handleNetwork();
 
 // Check if the BOOT button is held for resetting Wi-Fi settings
 void checkResetButton();

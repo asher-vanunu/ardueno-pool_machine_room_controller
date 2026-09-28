@@ -196,19 +196,19 @@ void handleArduinoComm() {
 
   unsigned long now = millis();
 
-  // שליחת GET:STATUS כל 3 שניות
+  // שליחת בקשת נתונים כל 3 שניות
   if (now - lastPollTime > 3000) {
     lastPollTime = now;
     SerialNano.println("GET:STATUS");
     
-    // אם הלוג מופעל, מתזמנים שליחת GET:LOG בדיוק 400ms אחרי ה-STATUS
+    // אם הלוג מופעל, מתזמנים שליחת נתוני לוג
     if (logEnabled) {
       logPendingSend = true;
       logScheduledTime = now + 400;
     }
   }
 
-  // שליחת פקודת GET:LOG
+  // שליחת פקודת בקשת לוג
   if (logPendingSend && now >= logScheduledTime) {
     logPendingSend = false;
     SerialNano.println("GET:LOG");
@@ -231,6 +231,10 @@ void handleArduinoComm() {
       }
     } else {
       inputBuffer += c;
+      // חגורת בטיחות: איפוס הזיכרון אם נוצרת מחרוזת ארוכה מדי עקב רעש או חוסר בתו ירידת שורה
+      if (inputBuffer.length() > 1024) {
+        inputBuffer = "";
+      }
     }
   }
 }

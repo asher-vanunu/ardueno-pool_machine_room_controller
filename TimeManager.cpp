@@ -10,7 +10,12 @@
 static RTC_DS3231 rtc;
 static bool rtcFound = false;
 
-// הגדרת מחרוזת אזור זמן רשמית עבור ישראל הכוללת מעבר אוטומטי בין שעון קיץ לחורף
+// משתנים למעקב אחר הסנכרון
+static bool initialNtpSynced = false;
+static unsigned long lastNtpSyncTime = 0;
+const unsigned long NTP_SYNC_INTERVAL = 3600000; // סנכרון פעם בשעה
+
+// הגדרת מחרוזת אזור זמן רשמית עבור ישראל
 const char* TIMEZONE_ISRAEL = "IST-2IDT,M3.4.4/26,M10.5.0";
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
@@ -21,7 +26,9 @@ void timeAvailableCallback(struct timeval *t) {
   Serial.println("[NTP Event] Network Time Protocol sync received successfully!");
 
   struct tm timeinfo;
-  if (getLocalTime(&timeinfo)) {
+  
+  // הוספת הגבלת זמן ל-10 אלפיות שנייה כדי לא לתקוע את התוכנית בזמן ניתוק!
+  if (getLocalTime(&timeinfo, 10)) {
     Serial.printf("[NTP Event] Local Israel Time: %02d/%02d/%04d %02d:%02d:%02d\n",
                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
@@ -92,7 +99,8 @@ void updateRTCFromNTP() {
   struct tm timeinfo;
   time(&nowSecs);
 
-  if (!getLocalTime(&timeinfo)) {
+  // הוספת הגבלת זמן ל-10 אלפיות שנייה (מקור הבעיה היה עיכוב של 5 שניות לפקודה זו ללא רשת)
+  if (!getLocalTime(&timeinfo, 10)) {
     return;
   }
 
@@ -103,12 +111,35 @@ void updateRTCFromNTP() {
                         timeinfo.tm_hour,
                         timeinfo.tm_min,
                         timeinfo.tm_sec));
-    Serial.println("[NTP Sync] Periodic sync: DS3231 aligned.");
+    
+    if (!initialNtpSynced) {
+      Serial.println("[NTP Sync] Initial sync: DS3231 aligned.");
+      initialNtpSynced = true; 
+    }
   }
 }
 
 void handleTime() {
-  // שמור לטיפול רציף אם נדרש
+  static bool lastWifiState = false;
+  bool currentWifiState = (WiFi.status() == WL_CONNECTED);
+
+  // התאוששות מניתוק: אם החיבור חזר, מאלצים סנכרון זמן מיידי
+  if (currentWifiState && !lastWifiState) {
+    lastNtpSyncTime = millis() - NTP_SYNC_INTERVAL; 
+    initialNtpSynced = false; 
+  }
+  lastWifiState = currentWifiState;
+
+  if (!currentWifiState) {
+    return;
+  }
+
+  unsigned long currentMillis = millis();
+
+  if (!initialNtpSynced || (currentMillis - lastNtpSyncTime >= NTP_SYNC_INTERVAL)) {
+    lastNtpSyncTime = currentMillis;
+    updateRTCFromNTP();
+  }
 }
 
 void printCurrentTime() {
@@ -124,7 +155,9 @@ void printCurrentTime() {
   time_t now;
   struct tm timeinfo;
   time(&now);
-  if (getLocalTime(&timeinfo)) {
+  
+  // גם פה נוסיף הגבלת זמן כדי למנוע השהיות
+  if (getLocalTime(&timeinfo, 10)) {
     Serial.printf("[System NTP]   %02d/%02d/%04d %02d:%02d:%02d\n",
                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);

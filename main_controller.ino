@@ -43,9 +43,9 @@ void setup() {
   pinMode(SYSTEM_POWER_RELAY_PIN, OUTPUT);
   digitalWrite(SYSTEM_POWER_RELAY_PIN, HIGH);
 
-  setupRTC();            // <--- אתחול ה-RTC וסנכרון מיידי לשעון המערכת
+  setupRTC();            
   setupNetwork();
-  setupOTA();            // <--- הפעלת שירות ה-OTA לאחר החיבור לרשת
+  setupOTA();            
   setupMQTT();
   setupModbus();
   setupArduinoComm();
@@ -53,13 +53,14 @@ void setup() {
 }
 
 void loop() {
-  handleOTA();           // <--- האזנה מתמדת לחבילות עדכון
+  handleNetwork();       // טיפול בחיבורי ה-WiFi ברקע
+  handleOTA();           
   checkResetButton();
   handleMQTT();
   handleModbus();
   handleArduinoComm();
   handleNanoFlasher();
-  handleTime();          // <--- בדיקה תקופתית ועדכון ה-DS3231 משעון הרשת
+  handleTime();          
 
   // הדפסת שעה כל 5 שניות לצורך מעקב ובדיקה
   static unsigned long lastPrintTime = 0;

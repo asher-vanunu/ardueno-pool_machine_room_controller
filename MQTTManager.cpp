@@ -10,7 +10,8 @@ static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 
 void publishPumpTelemetry(bool isRunning, uint16_t powerW, uint16_t flowM3H, float energyKWh) {
-  if (!mqttClient.connected()) return;
+  // חסימת תקיעת TCP: אם הרשת למטה, אל תנסה לשלוח כלום
+  if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
 
   char strBuffer[16];
   mqttClient.publish("pool/pump/state", isRunning ? "ON" : "OFF");
@@ -26,7 +27,8 @@ void publishPumpTelemetry(bool isRunning, uint16_t powerW, uint16_t flowM3H, flo
 }
 
 void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int state) {
-  if (!mqttClient.connected()) return;
+  // חסימת תקיעת TCP
+  if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
 
   char strBuffer[16];
 
@@ -51,10 +53,12 @@ void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int st
 }
 
 void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO, float dtF) {
-  if (!mqttClient.connected()) return;
-
+  // ההדפסה הזו נשארת כאן כדי שתמיד תראה את הפולינג, גם באופליין
   Serial.printf("[NANO -> ESP32] Syncing Config: sMAX=%.1f, tDEL=%.1f, tON=%.1f, tOFF=%.1f, DT_O=%.1f, DT_F=%.1f\n", 
                 sMax, tDel, tOn, tOff, dtO, dtF);
+
+  // חסימת תקיעת TCP (מונע המתנה לאישור מהראוטר הכבוי)
+  if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
 
   mqttClient.publish("pool/heating/sMAX", String(sMax, 1).c_str(), true);
   mqttClient.publish("pool/heating/tDEL", String(tDel, 1).c_str(), true);
@@ -65,7 +69,7 @@ void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO,
 }
 
 void publishSystemMode(bool isOn) {
-  if (!mqttClient.connected()) return;
+  if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
   mqttClient.publish("pool/heating/system_mode", isOn ? "ON" : "OFF", true);
 }
 
@@ -85,7 +89,6 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   float val = atof(message);
 
-  // Pump control
   if (strcmp(topic, "pool/pump/set_state") == 0) {
     setPumpPowerState(strcmp(message, "ON") == 0);
   } 
@@ -93,7 +96,6 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
     uint16_t targetFlow = atoi(message);
     setPumpFlowRate(targetFlow);
   }
-  // Heating controller commands (Arduino Nano)
   else if (strcmp(topic, "pool/heating/set_mode") == 0) {
     sendNanoMode(message);
   }
@@ -119,22 +121,18 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
     sendNanoSave();
   }
   else if (strcmp(topic, "pool/heating/reset_default") == 0) {
-    Serial.println("[MQTT] Received Reset Defaults command for Nano");
     sendNanoResetDefault();
   }
   else if (strcmp(topic, "pool/heating/set_system_mode") == 0) {
     setSystemPower(strcmp(message, "ON") == 0);
   }
   else if (strcmp(topic, "pool/control/nano_reset/set") == 0) {
-    Serial.println("[MQTT] Received Reset command for Nano");
     triggerNanoReset();
   } 
   else if (strcmp(topic, "pool/control/esp_reset/set") == 0) {
-    Serial.println("[MQTT] Received Reboot command for ESP32");
     delay(100);
     ESP.restart();
   }
-  
 }
 
 static void reconnectMQTT() {
@@ -150,7 +148,6 @@ static void reconnectMQTT() {
         Serial.println(" Connected!");
         mqttClient.publish("pool/status", "online", true);
 
-        // Subscriptions
         mqttClient.subscribe("pool/pump/set_state");
         mqttClient.subscribe("pool/pump/set_flow");
         mqttClient.subscribe("pool/heating/set_mode");
@@ -166,7 +163,6 @@ static void reconnectMQTT() {
         mqttClient.subscribe("pool/control/nano_reset/set");
         mqttClient.subscribe("pool/control/esp_reset/set");
 
-        // פרסום מצב המערכת הנוכחי (retained) כדי ש-HA ידע את המצב
         publishSystemMode(digitalRead(SYSTEM_POWER_RELAY_PIN) == HIGH);
       } else {
         Serial.printf(" Failed, rc=%d\n", mqttClient.state());
@@ -181,6 +177,11 @@ void setupMQTT() {
 }
 
 void handleMQTT() {
+  // הדילוג החשוב ביותר: אם הראוטר כבוי, אל תיכנס בכלל לפונקציות של הספרייה!
+  if (WiFi.status() != WL_CONNECTED) {
+    return; 
+  }
+
   if (!mqttClient.connected()) {
     reconnectMQTT();
   } else {

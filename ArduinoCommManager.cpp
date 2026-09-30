@@ -2,6 +2,7 @@
 #include "Config.h"
 #include <HardwareSerial.h>
 #include <ArduinoJson.h>
+#include "NanoFlasher.h"
 
 extern void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int state);
 extern void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO, float dtF);
@@ -27,7 +28,7 @@ static float current_dtF  = 2.0f;
 
 void setNanoLogEnabled(bool enabled) {
   logEnabled = enabled;
-  Serial.printf("[ArduinoComm] Log state changed to: %s\n", enabled ? "ENABLED" : "DISABLED");
+  WebSerial.printf("[ArduinoComm] Log state changed to: %s\n", enabled ? "ENABLED" : "DISABLED");
   if (enabled) {
     isFirstLogFrame = true; // איפוס כדי שידפיס את ה-Setup ברשומה הראשונה
   } else {
@@ -64,7 +65,7 @@ HardwareSerial& getNanoSerial() {
 
 void setupArduinoComm() {
   SerialNano.begin(NANO_BAUDRATE, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
-  Serial.println("[ArduinoComm] Serial channel to Arduino Nano initialized.");
+  WebSerial.println("[ArduinoComm] Serial channel to Arduino Nano initialized.");
 }
 
 void sendNanoMode(const char* mode) {
@@ -123,7 +124,7 @@ static void parseNanoLogJSON(const String& jsonStr) {
   DynamicJsonDocument doc(2048);
   DeserializationError error = deserializeJson(doc, jsonStr);
   if (error) {
-    Serial.printf("[ArduinoComm] Log JSON Error: %s\n", error.c_str());
+    WebSerial.printf("[ArduinoComm] Log JSON Error: %s\n", error.c_str());
     latestLogBuffer += "[RAW LOG] " + jsonStr + "\r\n";
     return;
   }

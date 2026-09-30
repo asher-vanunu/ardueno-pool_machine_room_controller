@@ -1,5 +1,6 @@
 #include "NetworkManager.h"
 #include "Config.h"
+#include "NanoFlasher.h"
 
 WiFiManager wm;
 
@@ -38,17 +39,17 @@ void setupNetwork() {
   wm.setConfigPortalTimeout(60);     
   wm.setConnectTimeout(3); 
 
-  Serial.println("[Network] Starting network connection process...");
+  WebSerial.println("[Network] Starting network connection process...");
 
   bool res = wm.autoConnect("Pool-Controller-AP");
 
   if (!res) {
-    Serial.println("[Network] Could not connect immediately. Config Portal 'Pool-Controller-AP' started in background.");
+    WebSerial.println("[Network] Could not connect immediately. Config Portal 'Pool-Controller-AP' started in background.");
     wasConnected = false;
   } else {
-    Serial.println("\n[Network] WiFi Connected successfully on boot!");
-    Serial.print("[Network] IP Address: ");
-    Serial.println(WiFi.localIP());
+    WebSerial.println("\n[Network] WiFi Connected successfully on boot!");
+    WebSerial.print("[Network] IP Address: ");
+    WebSerial.println(WiFi.localIP());
     wasConnected = true;
   }
 }
@@ -60,17 +61,17 @@ void handleNetwork() {
   unsigned long currentMillis = millis();
 
   if (isConnected && !wasConnected) {
-    Serial.println("\n---------------------------------------------");
-    Serial.println("[Network Status] WiFi Reconnected Successfully!");
-    Serial.print("[Network Status] IP Address: ");
-    Serial.println(WiFi.localIP());
-    Serial.println("---------------------------------------------\n");
+    WebSerial.println("\n---------------------------------------------");
+    WebSerial.println("[Network Status] WiFi Reconnected Successfully!");
+    WebSerial.print("[Network Status] IP Address: ");
+    WebSerial.println(WiFi.localIP());
+    WebSerial.println("---------------------------------------------\n");
     wasConnected = true;
   } 
   else if (!isConnected && wasConnected) {
-    Serial.println("\n---------------------------------------------");
-    Serial.println("[Network Status] WiFi Disconnected! Polling Arduino continues in offline mode...");
-    Serial.println("---------------------------------------------\n");
+    WebSerial.println("\n---------------------------------------------");
+    WebSerial.println("[Network Status] WiFi Disconnected! Polling Arduino continues in offline mode...");
+    WebSerial.println("---------------------------------------------\n");
     wasConnected = false;
     lastReconnectAttempt = currentMillis; // התחלת ספירה לאחור לניסיון חיבור מחדש
   }
@@ -79,7 +80,7 @@ void handleNetwork() {
   if (!isConnected && (currentMillis - lastReconnectAttempt >= 10000)) {
     lastReconnectAttempt = currentMillis;
     if (!wm.getConfigPortalActive()) {
-      Serial.println("[Network] Attempting active background reconnect to WiFi...");
+      WebSerial.println("[Network] Attempting active background reconnect to WiFi...");
       WiFi.reconnect(); // ניסיון התחברות שלא תוקע את הלולאה
     }
   }
@@ -93,7 +94,7 @@ void checkResetButton() {
   }
 
   if (buttonStateCurrent == LOW && (millis() - buttonPressStart > 3000)) {
-    Serial.println("\n[RESET] BOOT Button held for 3s! Clearing Wi-Fi credentials...");
+    WebSerial.println("\n[RESET] BOOT Button held for 3s! Clearing Wi-Fi credentials...");
     wm.resetSettings();
     delay(1000);
     ESP.restart();
@@ -104,5 +105,5 @@ void checkResetButton() {
 
 void resetWiFiSettings() {
   wm.resetSettings();
-  Serial.println("Wi-Fi settings reset manually via code.");
+  WebSerial.println("Wi-Fi settings reset manually via code.");
 }

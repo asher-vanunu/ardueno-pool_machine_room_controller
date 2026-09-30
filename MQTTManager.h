@@ -7,13 +7,11 @@
 void setupMQTT();
 void handleMQTT();
 
-void publishPumpTelemetry(bool isRunning, uint16_t powerW, uint16_t flowM3H, float energyKWh);
+void publishPumpTelemetry(bool isRunning, uint16_t capacityPct, uint16_t powerW, uint16_t flowM3H, float energyKWh, const char* modeStr);
 void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int state);
 
-// פונקציה חדשה לפרסום הגדרות החימום ל-MQTT
 void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO, float dtF);
 
-// פרסום מצב המערכת (ON/OFF) - שליטה בחשמל ל-Arduino
 void publishSystemMode(bool isOn);
 void setSystemPower(bool isOn);
 

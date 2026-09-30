@@ -10,29 +10,29 @@
 
 void print_board_info(void)
 {
-  Serial.println("\n--- ESP32 Hardware Info ---");
+  WebSerial.println("\n--- ESP32 Hardware Info ---");
 
   uint32_t flashSizeBytes = ESP.getFlashChipSize();
   float flashSizeMB = flashSizeBytes / (1024.0 * 1024.0);
-  Serial.printf("Flash Chip Size: %u bytes (%.2f MB)\n", flashSizeBytes, flashSizeMB);
+  WebSerial.printf("Flash Chip Size: %u bytes (%.2f MB)\n", flashSizeBytes, flashSizeMB);
 
   if (psramFound()) {
     uint32_t psramSizeBytes = ESP.getPsramSize();
     uint32_t freePsramBytes = ESP.getFreePsram();
-    Serial.printf("PSRAM Detected: %.2f MB (Total: %u bytes, Free: %u bytes)\n", 
+    WebSerial.printf("PSRAM Detected: %.2f MB (Total: %u bytes, Free: %u bytes)\n", 
                   psramSizeBytes / (1024.0 * 1024.0), psramSizeBytes, freePsramBytes);
   } else {
-    Serial.println("PSRAM: Not detected or not enabled in IDE settings.");
+    WebSerial.println("PSRAM: Not detected or not enabled in IDE settings.");
   }
 
-  Serial.printf("Internal Free Heap: %u bytes\n", ESP.getFreeHeap());
-  Serial.printf("PSRAM found: %s\n", psramFound() ? "YES" : "NO");
-//  Serial.println("\n--- ESP32 Hardware Info (OTA TEST v2) ---");
-  Serial.println("---------------------------");
+  WebSerial.printf("Internal Free Heap: %u bytes\n", ESP.getFreeHeap());
+  WebSerial.printf("PSRAM found: %s\n", psramFound() ? "YES" : "NO");
+//  WebSerial.println("\n--- ESP32 Hardware Info (OTA TEST v2) ---");
+  WebSerial.println("---------------------------");
 }
 
 void setup() {
-  Serial.begin(115200);
+  WebSerial.begin(115200);
 
   print_board_info();
 

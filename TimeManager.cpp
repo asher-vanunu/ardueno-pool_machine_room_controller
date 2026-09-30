@@ -1,5 +1,6 @@
 #include "TimeManager.h"
 #include "Config.h"
+#include "NanoFlasher.h"
 #include <Wire.h>
 #include <RTClib.h>
 #include <WiFi.h>
@@ -22,14 +23,14 @@ const char* ntpServer2 = "time.nist.gov";
 
 // פונקציית מעקב מובנית שמופעלת ברגע שהתקבל זמן מהרשת
 void timeAvailableCallback(struct timeval *t) {
-  Serial.println("\n---------------------------------------------");
-  Serial.println("[NTP Event] Network Time Protocol sync received successfully!");
+  WebSerial.println("\n---------------------------------------------");
+  WebSerial.println("[NTP Event] Network Time Protocol sync received successfully!");
 
   struct tm timeinfo;
   
   // הוספת הגבלת זמן ל-10 אלפיות שנייה כדי לא לתקוע את התוכנית בזמן ניתוק!
   if (getLocalTime(&timeinfo, 10)) {
-    Serial.printf("[NTP Event] Local Israel Time: %02d/%02d/%04d %02d:%02d:%02d\n",
+    WebSerial.printf("[NTP Event] Local Israel Time: %02d/%02d/%04d %02d:%02d:%02d\n",
                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 
@@ -41,24 +42,24 @@ void timeAvailableCallback(struct timeval *t) {
                           timeinfo.tm_hour,
                           timeinfo.tm_min,
                           timeinfo.tm_sec));
-      Serial.println("[RTC] DS3231 aligned with local Israel time.");
+      WebSerial.println("[RTC] DS3231 aligned with local Israel time.");
     }
   }
-  Serial.println("---------------------------------------------\n");
+  WebSerial.println("---------------------------------------------\n");
 }
 
 void setupRTC() {
   Wire.begin(RTC_SDA_PIN, RTC_SCL_PIN);
 
   if (!rtc.begin()) {
-    Serial.println("[RTC] ERROR: Could not find DS3231 module! Check wiring on SDA/SCL.");
+    WebSerial.println("[RTC] ERROR: Could not find DS3231 module! Check wiring on SDA/SCL.");
     rtcFound = false;
   } else {
     rtcFound = true;
-    Serial.println("[RTC] DS3231 initialized successfully.");
+    WebSerial.println("[RTC] DS3231 initialized successfully.");
 
     if (rtc.lostPower()) {
-      Serial.println("[RTC] DS3231 lost power, initializing time from build date.");
+      WebSerial.println("[RTC] DS3231 lost power, initializing time from build date.");
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     }
 
@@ -69,7 +70,7 @@ void setupRTC() {
   // הגדרת אזור זמן ישראל רשמי (ללא תוספת היסט ידנית כפולה)
   configTzTime(TIMEZONE_ISRAEL, ntpServer1, ntpServer2);
   sntp_set_time_sync_notification_cb(timeAvailableCallback);
-  Serial.println("[Time] NTP client configured with Israel Timezone.");
+  WebSerial.println("[Time] NTP client configured with Israel Timezone.");
 }
 
 void syncSystemTimeWithRTC() {
@@ -89,7 +90,7 @@ void syncSystemTimeWithRTC() {
   struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
   settimeofday(&tv, NULL);
 
-  Serial.printf("[RTC] Synced system time from DS3231: %02d/%02d/%04d %02d:%02d:%02d\n",
+  WebSerial.printf("[RTC] Synced system time from DS3231: %02d/%02d/%04d %02d:%02d:%02d\n",
                 now.day(), now.month(), now.year(),
                 now.hour(), now.minute(), now.second());
 }
@@ -113,7 +114,7 @@ void updateRTCFromNTP() {
                         timeinfo.tm_sec));
     
     if (!initialNtpSynced) {
-      Serial.println("[NTP Sync] Initial sync: DS3231 aligned.");
+      WebSerial.println("[NTP Sync] Initial sync: DS3231 aligned.");
       initialNtpSynced = true; 
     }
   }
@@ -145,11 +146,11 @@ void handleTime() {
 void printCurrentTime() {
   if (rtcFound) {
     DateTime rtcNow = rtc.now();
-    Serial.printf("[RTC Hardware] %02d/%02d/%04d %02d:%02d:%02d\n",
+    WebSerial.printf("[RTC Hardware] %02d/%02d/%04d %02d:%02d:%02d\n",
                   rtcNow.day(), rtcNow.month(), rtcNow.year(),
                   rtcNow.hour(), rtcNow.minute(), rtcNow.second());
   } else {
-    Serial.println("[RTC Hardware] Module not detected!");
+    WebSerial.println("[RTC Hardware] Module not detected!");
   }
 
   time_t now;
@@ -158,10 +159,10 @@ void printCurrentTime() {
   
   // גם פה נוסיף הגבלת זמן כדי למנוע השהיות
   if (getLocalTime(&timeinfo, 10)) {
-    Serial.printf("[System NTP]   %02d/%02d/%04d %02d:%02d:%02d\n",
+    WebSerial.printf("[System NTP]   %02d/%02d/%04d %02d:%02d:%02d\n",
                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   } else {
-    Serial.println("[System NTP]   Not synced yet.");
+    WebSerial.println("[System NTP]   Not synced yet.");
   }
 }

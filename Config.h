@@ -3,7 +3,7 @@
 
 // --- Development & Debug Mode ---
 // שים בהערה (//) ברגע שאתה מחבר את מודול ה-MAX485 הפיזי למנוע קריסות מפינים צפים
-#define MODBUS_MOCK_MODE
+//#define MODBUS_MOCK_MODE
 
 // --- MQTT Server Settings ---
 #define MQTT_SERVER "10.100.102.27"
@@ -43,7 +43,7 @@
 #define NANO_TX_PIN      2      // GPIO2 (connected to Nano RX / D0 via voltage divider)
 #define NANO_BAUDRATE    19200
 
-#define REG_WRITE_CAP    0x0BB9 // Capacity (30-120%, 10 = OFF)
+#define REG_WRITE_CAP    0x0BB9 // Capacity (30-120%)
 #define REG_WRITE_FLOW   0x0BBD // Flow rate m3/h (8-25 m3/h for 1.05kW, 0 = OFF)
 
 #endif

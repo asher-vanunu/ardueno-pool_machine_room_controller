@@ -9,12 +9,14 @@
 static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 
-void publishPumpTelemetry(bool isRunning, uint16_t powerW, uint16_t flowM3H, float energyKWh) {
-  // חסימת תקיעת TCP: אם הרשת למטה, אל תנסה לשלוח כלום
+void publishPumpTelemetry(bool isRunning, uint16_t capacityPct, uint16_t powerW, uint16_t flowM3H, float energyKWh, const char* modeStr) {
   if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
 
   char strBuffer[16];
   mqttClient.publish("pool/pump/state", isRunning ? "ON" : "OFF");
+
+  snprintf(strBuffer, sizeof(strBuffer), "%u", capacityPct);
+  mqttClient.publish("pool/pump/capacity_pct", strBuffer);
 
   snprintf(strBuffer, sizeof(strBuffer), "%u", powerW);
   mqttClient.publish("pool/pump/power_watts", strBuffer);
@@ -24,42 +26,28 @@ void publishPumpTelemetry(bool isRunning, uint16_t powerW, uint16_t flowM3H, flo
 
   snprintf(strBuffer, sizeof(strBuffer), "%.2f", energyKWh);
   mqttClient.publish("pool/pump/energy_kwh", strBuffer);
+
+  mqttClient.publish("pool/pump/mode", modeStr, true);
 }
 
 void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int state) {
-  // חסימת תקיעת TCP
   if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
-
   char strBuffer[16];
-
   snprintf(strBuffer, sizeof(strBuffer), "%.1f", tCol);
   mqttClient.publish("pool/heating/tCOL", strBuffer);
-
   snprintf(strBuffer, sizeof(strBuffer), "%.1f", tSt);
   mqttClient.publish("pool/heating/tST", strBuffer);
-
   snprintf(strBuffer, sizeof(strBuffer), "%.1f", tFlw);
   mqttClient.publish("pool/heating/tFLW", strBuffer);
-
   mqttClient.publish("pool/heating/pump_state", pumpOn ? "ON" : "OFF");
-
   snprintf(strBuffer, sizeof(strBuffer), "%d", state);
   mqttClient.publish("pool/heating/state", strBuffer);
-
-  const char* mode = "AUTO";
-  if (state == 4) mode = "MAN_ON";
-  else if (state == 5) mode = "MAN_OFF";
+  const char* mode = (state == 4) ? "MAN_ON" : ((state == 5) ? "MAN_OFF" : "AUTO");
   mqttClient.publish("pool/heating/mode", mode, true);
 }
 
 void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO, float dtF) {
-  // ההדפסה הזו נשארת כאן כדי שתמיד תראה את הפולינג, גם באופליין
-  Serial.printf("[NANO -> ESP32] Syncing Config: sMAX=%.1f, tDEL=%.1f, tON=%.1f, tOFF=%.1f, DT_O=%.1f, DT_F=%.1f\n", 
-                sMax, tDel, tOn, tOff, dtO, dtF);
-
-  // חסימת תקיעת TCP (מונע המתנה לאישור מהראוטר הכבוי)
   if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
-
   mqttClient.publish("pool/heating/sMAX", String(sMax, 1).c_str(), true);
   mqttClient.publish("pool/heating/tDEL", String(tDel, 1).c_str(), true);
   mqttClient.publish("pool/heating/tON",  String(tOn, 1).c_str(), true);
@@ -75,7 +63,6 @@ void publishSystemMode(bool isOn) {
 
 void setSystemPower(bool isOn) {
   digitalWrite(SYSTEM_POWER_RELAY_PIN, isOn ? HIGH : LOW);
-  Serial.printf("[SYSTEM] Arduino power %s\n", isOn ? "ON" : "OFF");
   publishSystemMode(isOn);
 }
 
@@ -85,16 +72,37 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   memcpy(message, payload, length);
   message[length] = '\0';
 
-  Serial.printf("[MQTT] Message arrived [%s]: %s\n", topic, message);
-
+  WebSerial.printf("[MQTT] Message arrived [%s]: %s\n", topic, message);
   float val = atof(message);
 
   if (strcmp(topic, "pool/pump/set_state") == 0) {
-    setPumpPowerState(strcmp(message, "ON") == 0);
+    bool turnOn = (strcmp(message, "ON") == 0);
+    if (setPumpPowerState(turnOn)) {
+      mqttClient.publish("pool/pump/state", turnOn ? "ON" : "OFF", true);
+    }
   } 
   else if (strcmp(topic, "pool/pump/set_flow") == 0) {
     uint16_t targetFlow = atoi(message);
-    setPumpFlowRate(targetFlow);
+    requestPumpFlowChange(targetFlow); 
+    mqttClient.publish("pool/pump/mode", "Auto Inverter", true); // עדכון מיידי ל-UI
+  }
+  else if (strcmp(topic, "pool/pump/set_capacity") == 0) {
+    uint16_t targetCap = atoi(message);
+    requestPumpCapacityChange(targetCap);
+    mqttClient.publish("pool/pump/mode", "Manual Inverter", true); // עדכון מיידי ל-UI
+  }
+  else if (strcmp(topic, "pool/pump/set_mode") == 0) {
+    if (strcmp(message, "Auto Inverter") == 0) {
+      setPumpMode(MODE_AUTO);
+    } else if (strcmp(message, "Manual Inverter") == 0) {
+      setPumpMode(MODE_MANUAL);
+    }
+    mqttClient.publish("pool/pump/mode", message, true);
+  }
+  else if (strcmp(topic, "pool/pump/set_modbus_link") == 0) {
+    bool enableLink = (strcmp(message, "ON") == 0);
+    setModbusEnabled(enableLink);
+    mqttClient.publish("pool/pump/modbus_link_state", enableLink ? "ON" : "OFF", true);
   }
   else if (strcmp(topic, "pool/heating/set_mode") == 0) {
     sendNanoMode(message);
@@ -143,13 +151,14 @@ static void reconnectMQTT() {
     lastReconnectAttempt = now;
 
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("[MQTT] Attempting connection...");
       if (mqttClient.connect("Pool_ESP32_Master", "pool/status", 1, true, "offline")) {
-        Serial.println(" Connected!");
         mqttClient.publish("pool/status", "online", true);
 
         mqttClient.subscribe("pool/pump/set_state");
         mqttClient.subscribe("pool/pump/set_flow");
+        mqttClient.subscribe("pool/pump/set_capacity");
+        mqttClient.subscribe("pool/pump/set_mode");
+        mqttClient.subscribe("pool/pump/set_modbus_link");
         mqttClient.subscribe("pool/heating/set_mode");
         mqttClient.subscribe("pool/heating/set_smax");
         mqttClient.subscribe("pool/heating/set_tdel");
@@ -164,8 +173,7 @@ static void reconnectMQTT() {
         mqttClient.subscribe("pool/control/esp_reset/set");
 
         publishSystemMode(digitalRead(SYSTEM_POWER_RELAY_PIN) == HIGH);
-      } else {
-        Serial.printf(" Failed, rc=%d\n", mqttClient.state());
+        mqttClient.publish("pool/pump/modbus_link_state", isModbusEnabled() ? "ON" : "OFF", true);
       }
     }
   }
@@ -177,11 +185,7 @@ void setupMQTT() {
 }
 
 void handleMQTT() {
-  // הדילוג החשוב ביותר: אם הראוטר כבוי, אל תיכנס בכלל לפונקציות של הספרייה!
-  if (WiFi.status() != WL_CONNECTED) {
-    return; 
-  }
-
+  if (WiFi.status() != WL_CONNECTED) return;
   if (!mqttClient.connected()) {
     reconnectMQTT();
   } else {

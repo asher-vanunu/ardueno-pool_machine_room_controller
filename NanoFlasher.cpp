@@ -4,6 +4,41 @@
 #include <WebServer.h>
 #include <HardwareSerial.h>
 
+WebSerialPrint WebSerial;
+
+size_t WebSerialPrint::write(uint8_t c) {
+  Serial.write(c); // תמיד מדפיס לטרמינל הפיזי
+  
+  if (webOutputEnabled) {
+    buffer += (char)c;
+    // מנגנון הגנה יעיל: אם עברנו 4KB, מוחקים רק את ההתחלה (2KB הישנים)
+    if(buffer.length() > 4096) {
+      buffer.remove(0, 2048); 
+    }
+  }
+  return 1;
+}
+
+size_t WebSerialPrint::write(const uint8_t *buf, size_t size) {
+  Serial.write(buf, size); // תמיד מדפיס לטרמינל הפיזי
+  
+  if (webOutputEnabled) {
+    buffer.reserve(buffer.length() + size);
+    for(size_t i = 0; i < size; i++) {
+      buffer += (char)buf[i];
+    }
+    // מחיקת ישנים מבלי לרוקן הכל
+    if (buffer.length() > 4096) {
+      buffer.remove(0, buffer.length() - 2048);
+    }
+  }
+  return size;
+}
+
+void WebSerialPrint::begin(unsigned long baud) {
+  Serial.begin(baud);
+}
+
 static WebServer nanoServer(8080);
 
 #define STK_OK              0x10
@@ -145,7 +180,7 @@ bool flashNanoHex(const uint8_t* hexData, size_t hexLen) {
   triggerNanoReset();
 
   if (!stkSendSync()) {
-    Serial.println("[NanoFlasher] Error: Could not sync with Bootloader!");
+    WebSerial.println("[NanoFlasher] Error: Could not sync with Bootloader!");
     resumeArduinoComm();
     return false;
   }
@@ -228,9 +263,30 @@ static const char* nanoUploadPage =
   "</div>"
   "</div>"
 
+  "<!-- מסגרת 3: טרמינל סיריאלי ESP32 -->"
+  "<div class='box box-log'>"
+  "<h2 style='text-align:center;'>ESP32 Serial Terminal</h2>"
+  "<div id='termStatus' class='status-indicator'>סטטוס: שידור לפורטל מבוטל</div>"
+  "<div style='display:flex;gap:10px;'>"
+  "<button class='btn-start' id='btnTermEnable' onclick='doTermToggle(true)'>אפשר שידור לפורטל</button>"
+  "<button class='btn-stop' id='btnTermDisable' onclick='doTermToggle(false)' disabled>הפסק שידור</button>"
+  "</div>"
+  "<div class='console' id='terminalBox'>[TERMINAL READY] ממתין לנתונים...</div>"
+  
+  "<!-- שימוש ב-Grid מבטיח שהכפתורים לעולם לא ירדו שורה -->"
+  "<div style='display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px;'>"
+  "<button class='btn-save' style='margin-bottom:0; width:100%;' onclick='doSaveTerminal()'>שמור לקובץ</button>"
+  "<button style='background:#6c757d; color:white; margin-bottom:0; width:100%;' onclick='doCopyTerminal()'>העתק טרמינל</button>"
+  "<button style='background:#343a40; margin-bottom:0; width:100%;' onclick='doClearTerminal()'>נקה מסך</button>"
+  "</div>"
+  
+  "</div>"
+
   "<script>"
   "var logData = '';"
+  "var termData = '';"
   "var timer = null;"
+  "var termEnabled = false;"
 
   "function doStart() {"
   "  document.getElementById('logStatus').innerHTML = 'סטטוס: <span style=\"color:#007bff;\">מתחבר...</span>';"
@@ -256,7 +312,7 @@ static const char* nanoUploadPage =
   "}"
 
   "function poll() {"
-  "  fetch('/log/read')"
+  "  fetch('/log/read?t=' + new Date().getTime())"
   "    .then(function(r){ return r.text(); })"
   "    .then(function(txt){"
   "      if(txt && txt.length > 0) {"
@@ -286,6 +342,77 @@ static const char* nanoUploadPage =
   "  document.body.appendChild(a);"
   "  a.click();"
   "  document.body.removeChild(a);"
+  "}"
+
+  "function doTermToggle(state) {"
+  "  fetch('/terminal/toggle?state=' + (state ? '1' : '0') + '&t=' + new Date().getTime())"
+  "    .then(function(r){ return r.text(); })"
+  "    .then(function(txt) {"
+  "       termEnabled = state;"
+  "       if(state) {"
+  "         document.getElementById('termStatus').innerHTML = 'סטטוס: <span style=\"color:#28a745;\">שידור מופעל</span>';"
+  "         document.getElementById('btnTermEnable').disabled = true;"
+  "         document.getElementById('btnTermDisable').disabled = false;"
+  "       } else {"
+  "         document.getElementById('termStatus').innerHTML = 'סטטוס: <span style=\"color:#dc3545;\">שידור מבוטל</span>';"
+  "         document.getElementById('btnTermEnable').disabled = false;"
+  "         document.getElementById('btnTermDisable').disabled = true;"
+  "       }"
+  "    }).catch(function(e){ alert('שגיאה בתקשורת'); });"
+  "}"
+  
+  "function pollTerminal() {"
+  "  if(!termEnabled) return;"
+  "  fetch('/terminal/read?t=' + new Date().getTime())"
+  "    .then(function(r){ return r.text(); })"
+  "    .then(function(txt){"
+  "      if(txt && txt.length > 0) {"
+  "        termData += txt;"
+  "        var c = document.getElementById('terminalBox');"
+  "        if(c.textContent.indexOf('[TERMINAL READY') !== -1) c.textContent = '';"
+  "        c.textContent += txt;"
+  "        c.scrollTop = c.scrollHeight;"
+  "      }"
+  "    }).catch(function(){});"
+  "}"
+  "setInterval(pollTerminal, 1200);"
+
+  "function doSaveTerminal() {"
+  "  if(!termData.trim()) { alert('אין נתונים לשמירה!'); return; }"
+  "  var blob = new Blob([termData], { type: 'text/plain;charset=utf-8' });"
+  "  var a = document.createElement('a');"
+  "  a.href = URL.createObjectURL(blob);"
+  "  a.download = 'ESP_Terminal_Dump.txt';"
+  "  document.body.appendChild(a);"
+  "  a.click();"
+  "  document.body.removeChild(a);"
+  "}"
+
+  "function doCopyTerminal() {"
+  "  if(!termData.trim()) { alert('אין נתונים להעתקה!'); return; }"
+  "  if (navigator.clipboard && window.isSecureContext) {"
+  "    navigator.clipboard.writeText(termData).then(function() { alert('התוכן הועתק בהצלחה ללוח!'); });"
+  "  } else {"
+  "    /* Fallback עבור חיבורי HTTP לא מאובטחים */"
+  "    var ta = document.createElement('textarea');"
+  "    ta.value = termData;"
+  "    ta.style.position = 'fixed';"
+  "    document.body.appendChild(ta);"
+  "    ta.focus();"
+  "    ta.select();"
+  "    try {"
+  "      document.execCommand('copy');"
+  "      alert('התוכן הועתק בהצלחה ללוח!');"
+  "    } catch(err) {"
+  "      alert('שגיאה בהעתקה, הדפדפן חוסם זאת.');"
+  "    }"
+  "    document.body.removeChild(ta);"
+  "  }"
+  "}"
+
+  "function doClearTerminal() {"
+  "  termData = '';"
+  "  document.getElementById('terminalBox').textContent = '';"
   "}"
   "</script></body></html>";
 
@@ -332,6 +459,23 @@ void setupNanoFlasher() {
     nanoServer.send(200, "text/plain", logText);
   });
 
+  // נתיב להדלקה וכיבוי השליחה לפורטל
+  nanoServer.on("/terminal/toggle", HTTP_GET, []() {
+    if (nanoServer.hasArg("state")) {
+      WebSerial.webOutputEnabled = (nanoServer.arg("state") == "1");
+      WebSerial.buffer = ""; // תמיד מנקים את החוצץ בעת שינוי מצב למניעת שאריות מהעבר
+    }
+    nanoServer.sendHeader("Cache-Control", "no-cache");
+    nanoServer.send(200, "text/plain", WebSerial.webOutputEnabled ? "ENABLED" : "DISABLED");
+  });
+
+  // נתיב למשיכת נתוני הטרמינל
+  nanoServer.on("/terminal/read", HTTP_GET, []() {
+    nanoServer.sendHeader("Cache-Control", "no-cache");
+    nanoServer.send(200, "text/plain", WebSerial.buffer);
+    WebSerial.buffer = ""; // ניקוי החוצץ לאחר כל משיכה
+  });
+
   nanoServer.on("/upload_hex", HTTP_POST, []() {
     resumeArduinoComm();
     if (flashSuccess) {
@@ -343,7 +487,7 @@ void setupNanoFlasher() {
     HTTPUpload& upload = nanoServer.upload();
 
     if (upload.status == UPLOAD_FILE_START) {
-      Serial.println("\n[NanoFlasher] Starting Nano Flashing Session...");
+      WebSerial.println("\n[NanoFlasher] Starting Nano Flashing Session...");
       pauseArduinoComm();
       flashSuccess = true;
       hexLineBuffer = "";
@@ -355,10 +499,10 @@ void setupNanoFlasher() {
       triggerNanoReset();
 
       if (!stkSendSync()) {
-        Serial.println("[NanoFlasher] Error: Could not sync with Bootloader!");
+        WebSerial.println("[NanoFlasher] Error: Could not sync with Bootloader!");
         flashSuccess = false;
       } else {
-        Serial.println("[NanoFlasher] Bootloader Synced!");
+        WebSerial.println("[NanoFlasher] Bootloader Synced!");
       }
     } 
     else if (upload.status == UPLOAD_FILE_WRITE && flashSuccess) {
@@ -384,13 +528,13 @@ void setupNanoFlasher() {
       if (pageHasData) {
         stkWritePage(currentPageStart, pageBuffer, NANO_PAGE_SIZE);
       }
-      Serial.println("[NanoFlasher] Firmware flashed completely.");
+      WebSerial.println("[NanoFlasher] Firmware flashed completely.");
       triggerNanoReset();
     }
   });
 
   nanoServer.begin();
-  Serial.println("[NanoFlasher] Server running on port 8080");
+  WebSerial.println("[NanoFlasher] Server running on port 8080");
 }
 
 void handleNanoFlasher() {

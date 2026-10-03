@@ -9,6 +9,9 @@ static bool buttonStatePrevious = HIGH;
 static bool wasConnected = false; 
 static unsigned long lastReconnectAttempt = 0;
 
+// המשתנה שישמור את הודעת הסטטוס לטובת הדפסה מאוחרת בטרמינל
+static String savedNetworkInfo = "Not connected to WiFi yet.";
+
 static void configureWiFiCountry() {
   WiFi.mode(WIFI_STA);
   WiFi.setMinSecurity(WIFI_AUTH_WPA2_PSK);
@@ -24,7 +27,7 @@ static void configureWiFiCountry() {
 }
 
 void setupNetwork() {
-  WiFi.persistent(false); 
+  WiFi.persistent(true); 
   WiFi.disconnect(true, true); 
   delay(200);
 
@@ -36,8 +39,8 @@ void setupNetwork() {
   configureWiFiCountry();
   
   wm.setConfigPortalBlocking(false); 
-  wm.setConfigPortalTimeout(60);     
-  wm.setConnectTimeout(3); 
+  wm.setConfigPortalTimeout(180);     
+  wm.setConnectTimeout(20); 
 
   WebSerial.println("[Network] Starting network connection process...");
 
@@ -47,9 +50,11 @@ void setupNetwork() {
     WebSerial.println("[Network] Could not connect immediately. Config Portal 'Pool-Controller-AP' started in background.");
     wasConnected = false;
   } else {
+    // שמירת הנתונים למשתנה
+    savedNetworkInfo = "SSID: " + WiFi.SSID() + " | IP: " + WiFi.localIP().toString() + " | RSSI: " + String(WiFi.RSSI()) + " dBm";
+    
     WebSerial.println("\n[Network] WiFi Connected successfully on boot!");
-    WebSerial.print("[Network] IP Address: ");
-    WebSerial.println(WiFi.localIP());
+    WebSerial.println("[Network] " + savedNetworkInfo);
     wasConnected = true;
   }
 }
@@ -61,10 +66,12 @@ void handleNetwork() {
   unsigned long currentMillis = millis();
 
   if (isConnected && !wasConnected) {
+    // עדכון המשתנה השמור כשהרשת חוזרת לאחר ניתוק
+    savedNetworkInfo = "SSID: " + WiFi.SSID() + " | IP: " + WiFi.localIP().toString() + " | RSSI: " + String(WiFi.RSSI()) + " dBm";
+    
     WebSerial.println("\n---------------------------------------------");
     WebSerial.println("[Network Status] WiFi Reconnected Successfully!");
-    WebSerial.print("[Network Status] IP Address: ");
-    WebSerial.println(WiFi.localIP());
+    WebSerial.println("[Network Status] " + savedNetworkInfo);
     WebSerial.println("---------------------------------------------\n");
     wasConnected = true;
   } 
@@ -73,17 +80,29 @@ void handleNetwork() {
     WebSerial.println("[Network Status] WiFi Disconnected! Polling Arduino continues in offline mode...");
     WebSerial.println("---------------------------------------------\n");
     wasConnected = false;
-    lastReconnectAttempt = currentMillis; // התחלת ספירה לאחור לניסיון חיבור מחדש
+    lastReconnectAttempt = currentMillis; 
   }
 
-  // הפעלת פקודת התחברות יזומה ואגרסיבית כל 10 שניות כדי להתגבר על חוסר התגובה של הראוטר
   if (!isConnected && (currentMillis - lastReconnectAttempt >= 10000)) {
     lastReconnectAttempt = currentMillis;
     if (!wm.getConfigPortalActive()) {
       WebSerial.println("[Network] Attempting active background reconnect to WiFi...");
-      WiFi.reconnect(); // ניסיון התחברות שלא תוקע את הלולאה
+      WiFi.reconnect(); 
     }
   }
+
+  // --- המנגנון החדש להדפסת הנתונים בעת הפעלת הטרמינל ---
+  static bool lastWebOutputState = false;
+  
+  // אם זיהינו שהמשתמש הרגע הפעיל את ה"שידור לפורטל"
+  if (WebSerial.webOutputEnabled && !lastWebOutputState) {
+    WebSerial.println("\n=== Saved Network Status ===");
+    WebSerial.println(savedNetworkInfo);
+    WebSerial.println("============================\n");
+  }
+  
+  // שמירת המצב הנוכחי לבדיקה במחזור הבא
+  lastWebOutputState = WebSerial.webOutputEnabled;
 }
 
 void checkResetButton() {
@@ -96,6 +115,7 @@ void checkResetButton() {
   if (buttonStateCurrent == LOW && (millis() - buttonPressStart > 3000)) {
     WebSerial.println("\n[RESET] BOOT Button held for 3s! Clearing Wi-Fi credentials...");
     wm.resetSettings();
+    WiFi.disconnect(true, true);
     delay(1000);
     ESP.restart();
   }
@@ -105,5 +125,6 @@ void checkResetButton() {
 
 void resetWiFiSettings() {
   wm.resetSettings();
+  WiFi.disconnect(true, true);
   WebSerial.println("Wi-Fi settings reset manually via code.");
 }

@@ -204,19 +204,28 @@ void handleModbus() {
     lastModbusPoll = now;
 
 #ifndef MODBUS_MOCK_MODE
-    uint8_t result = node.readHoldingRegisters(REG_READ_STATE, 6);
+    // נבקש 8 רגיסטרים כדי לכלול גם את גרסת התוכנה ב-0x07D9
+    uint8_t result = node.readHoldingRegisters(REG_READ_STATE, 8);
     if (result == node.ku8MBSuccess) {
-      uint16_t rawState    = node.getResponseBuffer(0x07D2 - REG_READ_STATE);
-      uint16_t capacityPct = node.getResponseBuffer(0x07D3 - REG_READ_STATE);
-      uint16_t powerW      = node.getResponseBuffer(0x07D4 - REG_READ_STATE);
-      uint16_t flowM3H     = node.getResponseBuffer(0x07D5 - REG_READ_STATE);
-      uint16_t rawEnergy   = node.getResponseBuffer(0x07D7 - REG_READ_STATE);
+      uint16_t rawState    = node.getResponseBuffer(0); // 0x07D2
+      uint16_t capacityPct = node.getResponseBuffer(1); // 0x07D3
+      uint16_t powerW      = node.getResponseBuffer(2); // 0x07D4
+      uint16_t flowM3H     = node.getResponseBuffer(3); // 0x07D5
+      uint16_t pressure    = node.getResponseBuffer(4); // 0x07D6
+      uint16_t rawEnergy   = node.getResponseBuffer(5); // 0x07D7
+      uint16_t modeCode    = node.getResponseBuffer(6); // 0x07D8
+      uint16_t swVersion   = node.getResponseBuffer(7); // 0x07D9
 
-      isPumpRunning = (rawState & 0x01); // עדכון הסטטוס הגלובלי
+      isPumpRunning = (rawState & 0x01);
       float energyKWh = rawEnergy / 1000.0f;
       
-      WebSerial.printf("[Modbus] SUCCESS: Pump=%s, Cap=%d%%, Flow=%d m3/h, Power=%d W, Energy=%.2f kWh\n", 
-                       (isPumpRunning ? "ON" : "OFF"), capacityPct, flowM3H, powerW, energyKWh);
+      // הדפסה רגילה
+      WebSerial.printf("[Modbus] SUCCESS: Pump=%s, Cap=%d%%, Flow=%d m3/h, Power=%d W, Energy=%.2f kWh, ModeCode=%d\n", 
+                       (isPumpRunning ? "ON" : "OFF"), capacityPct, flowM3H, powerW, energyKWh, modeCode);
+
+      // --- הדפסת דיאגנוסטיקה גולמית לטרמינל ---
+      WebSerial.printf("[DEBUG RAW] 0x07D2:%d, 0x07D3:%d, 0x07D4:%d, 0x07D5:%d, 0x07D6:%d, 0x07D7:%d, 0x07D8:%d, 0x07D9:%d\n",
+                       rawState, capacityPct, powerW, flowM3H, pressure, rawEnergy, modeCode, swVersion);
 
       const char* modeStr = (currentPumpMode == MODE_AUTO) ? "Auto Inverter" : "Manual Inverter";
       publishPumpTelemetry(isPumpRunning, capacityPct, powerW, flowM3H, energyKWh, modeStr);
@@ -226,6 +235,10 @@ void handleModbus() {
 #else
     if (mockRunning) mockEnergy += 0.001f;
     isPumpRunning = mockRunning;
+    uint16_t mockModeCode = (currentPumpMode == MODE_AUTO) ? 20 : 30;
+    WebSerial.printf("[Mock Modbus] SUCCESS: Pump=%s, Cap=%d%%, Flow=%d m3/h, Power=%d W, Energy=%.2f kWh, ModeCode=%d\n", 
+                     (isPumpRunning ? "ON" : "OFF"), mockCapacity, mockFlow, mockPower, mockEnergy, mockModeCode);
+
     const char* modeStr = (currentPumpMode == MODE_AUTO) ? "Auto Inverter" : "Manual Inverter";
     publishPumpTelemetry(mockRunning, mockCapacity, mockPower, mockFlow, mockEnergy, modeStr);
 #endif

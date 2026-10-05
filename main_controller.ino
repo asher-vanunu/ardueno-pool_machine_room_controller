@@ -56,16 +56,20 @@ void loop() {
   handleNetwork();       // טיפול בחיבורי ה-WiFi ברקע
   handleOTA();           
   checkResetButton();
-  handleMQTT();
-  handleModbus();
-  handleArduinoComm();
-  handleNanoFlasher();
-  handleTime();          
+  // בזמן OTA: מדלגים על משימות כבדות כדי לתת ל-ArduinoOTA נתיב CPU נקי.
+  // מונע timeout של חבילות OTA (WinError 10053) והשלמה חלקית של העלאה.
+  if (!otaInProgress) {
+    handleMQTT();
+    handleModbus();
+    handleArduinoComm();
+    handleNanoFlasher();
+    handleTime();          
 
-  // הדפסת שעה כל 5 שניות לצורך מעקב ובדיקה
-  static unsigned long lastPrintTime = 0;
-  if (millis() - lastPrintTime >= 5000) {
-    lastPrintTime = millis();
-    printCurrentTime();
+    // הדפסת שעה כל 5 שניות לצורך מעקב ובדיקה
+    static unsigned long lastPrintTime = 0;
+    if (millis() - lastPrintTime >= 5000) {
+      lastPrintTime = millis();
+      printCurrentTime();
+    }
   }
 }

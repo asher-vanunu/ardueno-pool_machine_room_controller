@@ -9,13 +9,10 @@ static bool buttonStatePrevious = HIGH;
 static bool wasConnected = false; 
 static unsigned long lastReconnectAttempt = 0;
 
-// המשתנה שישמור את הודעת הסטטוס לטובת הדפסה מאוחרת בטרמינל
 static String savedNetworkInfo = "Not connected to WiFi yet.";
 
 static void configureWiFiCountry() {
-  WiFi.mode(WIFI_STA);
-  WiFi.setMinSecurity(WIFI_AUTH_WPA2_PSK);
-
+  // הסרנו מכאן את הקיבוע ל-WIFI_STA כדי שהפורטל יוכל לעבוד
   wifi_country_t country = {
     .cc = "IL",
     .schan = 1,
@@ -28,12 +25,12 @@ static void configureWiFiCountry() {
 
 void setupNetwork() {
   WiFi.persistent(true); 
-  WiFi.disconnect(true, true); 
+  
+  // השורה WiFi.disconnect(true, true) נמחקה מכאן כדי לא לדרוס את הזיכרון!
   delay(200);
 
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA); 
   WiFi.setSleep(false);
-  
   WiFi.setAutoReconnect(true);
   
   configureWiFiCountry();
@@ -50,9 +47,7 @@ void setupNetwork() {
     WebSerial.println("[Network] Could not connect immediately. Config Portal 'Pool-Controller-AP' started in background.");
     wasConnected = false;
   } else {
-    // שמירת הנתונים למשתנה
     savedNetworkInfo = "SSID: " + WiFi.SSID() + " | IP: " + WiFi.localIP().toString() + " | RSSI: " + String(WiFi.RSSI()) + " dBm";
-    
     WebSerial.println("\n[Network] WiFi Connected successfully on boot!");
     WebSerial.println("[Network] " + savedNetworkInfo);
     wasConnected = true;
@@ -66,9 +61,7 @@ void handleNetwork() {
   unsigned long currentMillis = millis();
 
   if (isConnected && !wasConnected) {
-    // עדכון המשתנה השמור כשהרשת חוזרת לאחר ניתוק
     savedNetworkInfo = "SSID: " + WiFi.SSID() + " | IP: " + WiFi.localIP().toString() + " | RSSI: " + String(WiFi.RSSI()) + " dBm";
-    
     WebSerial.println("\n---------------------------------------------");
     WebSerial.println("[Network Status] WiFi Reconnected Successfully!");
     WebSerial.println("[Network Status] " + savedNetworkInfo);
@@ -91,17 +84,14 @@ void handleNetwork() {
     }
   }
 
-  // --- המנגנון החדש להדפסת הנתונים בעת הפעלת הטרמינל ---
   static bool lastWebOutputState = false;
   
-  // אם זיהינו שהמשתמש הרגע הפעיל את ה"שידור לפורטל"
   if (WebSerial.webOutputEnabled && !lastWebOutputState) {
     WebSerial.println("\n=== Saved Network Status ===");
     WebSerial.println(savedNetworkInfo);
     WebSerial.println("============================\n");
   }
   
-  // שמירת המצב הנוכחי לבדיקה במחזור הבא
   lastWebOutputState = WebSerial.webOutputEnabled;
 }
 

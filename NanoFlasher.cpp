@@ -1,6 +1,8 @@
 #include "NanoFlasher.h"
 #include "Config.h"
 #include "ArduinoCommManager.h"
+#include "NetworkManager.h" // נוסף כדי לאפשר מחיקת הגדרות Wi-Fi
+#include "OTAManager.h"      // נוסף כדי לאפשר performHardReset() מהפורטל
 #include <WebServer.h>
 #include <HardwareSerial.h>
 
@@ -229,6 +231,7 @@ static const char* nanoUploadPage =
   ".btn-uart{background:#28a745;}"
   ".btn-reset{background:#ffc107;color:#212529;} .btn-reset:hover{background:#e0a800;}"
   ".btn-esp{background:#dc3545;color:white;} .btn-esp:hover{background:#c82333;}"
+  ".btn-wifi{background:#6f42c1;color:white;} .btn-wifi:hover{background:#5a32a3;}"
   ".btn-start{background:#28a745;color:white;}"
   ".btn-stop{background:#dc3545;color:white;}"
   ".btn-save{background:#17a2b8;color:white;}"
@@ -246,11 +249,13 @@ static const char* nanoUploadPage =
   "</form><hr style='margin:20px 0;'>"
   "<button class='btn-reset' onclick=\"fetch('/reset_nano').then(r=>r.text()).then(alert)\">בצע Reset ל-Nano</button>"
   "<button class='btn-esp' onclick=\"if(confirm('לאתחל את ה-ESP32?')) fetch('/reset_esp').then(r=>r.text()).then(alert)\">אתחל ESP32</button>"
+  "<hr style='margin:10px 0;'>"
+  "<button class='btn-wifi' onclick=\"if(confirm('למחוק הגדרות רשת (WiFi) ולאתחל את ה-ESP32? המערכת תפתח פורטל חדש להתחברות.')) { fetch('/reset_wifi'); alert('הגדרות הרשת נמחקו, ה-ESP32 מאתחל...'); }\">איפוס הגדרות WiFi</button>"
   "</div>"
 
   "<!-- מסגרת 2: מוניטור לוג TakeLog -->"
   "<div class='box box-log'>"
-  "<h2 style='text-align:center;'>Log Monitor</h2>"
+  "<h2 style='text-align:center;'>Heat controller Log Monitor</h2>"
   "<div id='logStatus' class='status-indicator'>סטטוס: לוג מושבת</div>"
   "<div style='display:flex;gap:10px;'>"
   "<button class='btn-start' id='btnStart' onclick='doStart()'>התחל לוג</button>"
@@ -436,8 +441,17 @@ void setupNanoFlasher() {
   });
 
   nanoServer.on("/reset_esp", HTTP_GET, []() {
-    nanoServer.send(200, "text/plain", "ESP32 Rebooting...");
+    nanoServer.send(200, "text/plain", "ESP32 Rebooting (deep-sleep hard reset)...");
     delay(500);
+    performHardReset();
+  });
+
+  // הניתוב החדש לאיפוס ה-WiFi מרחוק
+  nanoServer.on("/reset_wifi", HTTP_GET, []() {
+    nanoServer.send(200, "text/plain", "WiFi Settings Cleared! ESP32 Rebooting into AP mode...");
+    delay(500);
+    resetWiFiSettings();
+    delay(1000);
     ESP.restart();
   });
 

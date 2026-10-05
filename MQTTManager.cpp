@@ -2,6 +2,7 @@
 #include "Config.h"
 #include "ModbusManager.h"
 #include "ArduinoCommManager.h"
+#include "OTAManager.h"   // נוסף כדי לאפשר performHardReset() דרך MQTT
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "NanoFlasher.h"
@@ -139,7 +140,7 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   } 
   else if (strcmp(topic, "pool/control/esp_reset/set") == 0) {
     delay(100);
-    ESP.restart();
+    performHardReset();
   }
 }
 

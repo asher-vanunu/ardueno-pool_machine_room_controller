@@ -6,10 +6,18 @@
 
 extern void publishNanoTelemetry(float tCol, float tSt, float tFlw, bool pumpOn, int state);
 extern void publishNanoConfig(float sMax, float tDel, float tOn, float tOff, float dtO, float dtF);
+extern void publishNanoAvailability(bool isAvailable);
 
 static HardwareSerial SerialNano(NANO_UART_NUM);
 static unsigned long lastPollTime = 0;
 static bool commPaused = false;
+
+// משתנים עבור מעקב זמינות Nano
+static unsigned long lastNanoResponseTime = 0;
+static unsigned long lastAvailabilityPublish = 0;
+static bool nanoIsAvailable = false;
+const unsigned long NANO_COMM_TIMEOUT = 60000; // 60 שניות timeout
+const unsigned long AVAILABILITY_INTERVAL = 30000; // שליחת סטטוס online כל 30 שניות
 
 // משתנים עבור בקרת לוג
 static bool logEnabled = false;
@@ -25,6 +33,10 @@ static float current_tOn  = 8.0f;
 static float current_tOff = 3.0f;
 static float current_dtO  = 8.0f;
 static float current_dtF  = 2.0f;
+
+bool isNanoAvailable() {
+  return nanoIsAvailable;
+}
 
 void setNanoLogEnabled(bool enabled) {
   logEnabled = enabled;
@@ -65,6 +77,7 @@ HardwareSerial& getNanoSerial() {
 
 void setupArduinoComm() {
   SerialNano.begin(NANO_BAUDRATE, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
+  lastNanoResponseTime = millis();
   WebSerial.println("[ArduinoComm] Serial channel to Arduino Nano initialized.");
 }
 
@@ -93,12 +106,29 @@ void sendNanoResetDefault() {
   SerialNano.println("CMD:DEFAULT");
 }
 
+static void markNanoAlive() {
+  unsigned long now = millis();
+  lastNanoResponseTime = now;
+
+  if (!nanoIsAvailable) {
+    nanoIsAvailable = true;
+    lastAvailabilityPublish = now;
+    publishNanoAvailability(true);
+    WebSerial.println("[ArduinoComm] Arduino Nano communication restored (Online).");
+  } else if (now - lastAvailabilityPublish >= AVAILABILITY_INTERVAL) {
+    lastAvailabilityPublish = now;
+    publishNanoAvailability(true);
+  }
+}
+
 static void parseNanoJSON(const String& jsonStr) {
   StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, jsonStr);
   if (error) {
     return;
   }
+
+  markNanoAlive();
 
   float tCol = doc["tCOL"] | 0.0f;
   float tSt  = doc["tST"]  | 0.0f;
@@ -129,6 +159,8 @@ static void parseNanoLogJSON(const String& jsonStr) {
     return;
   }
 
+  markNanoAlive();
+
   int frame         = doc["frame"] | 0;
   float tCol        = doc["tCOL"] | 0.0f;
   float tSt         = doc["tST"] | 0.0f;
@@ -147,7 +179,6 @@ static void parseNanoLogJSON(const String& jsonStr) {
   float maxdifftCOL = doc["maxdifftCOL"] | 0.0f;
   float diff_tCOL_TH= doc["diff_tCOL_TH"] | 0.0f;
 
-  // עדכון ערכים אם קיימים בחבילת הלוג
   if (doc.containsKey("sMAX")) current_sMax = doc["sMAX"] | current_sMax;
   if (doc.containsKey("tDEL")) current_tDel = doc["tDEL"] | current_tDel;
   if (doc.containsKey("tON"))  current_tOn  = doc["tON"]  | current_tOn;
@@ -157,7 +188,6 @@ static void parseNanoLogJSON(const String& jsonStr) {
 
   String entry = "";
 
-  // הדפסת פרמטרי ה-Setup פעם אחת בכל תחילת הפעלת לוג
   if (isFirstLogFrame) {
     isFirstLogFrame = false;
     entry += "######## Device Set_up ##########\r\n";
@@ -197,19 +227,24 @@ void handleArduinoComm() {
 
   unsigned long now = millis();
 
+  // בדיקת מענה מהנאנו - זיהוי ניתוק לאחר 60 שניות
+  if (nanoIsAvailable && (now - lastNanoResponseTime > NANO_COMM_TIMEOUT)) {
+    nanoIsAvailable = false;
+    publishNanoAvailability(false);
+    WebSerial.println("[ArduinoComm] Warning: No response from Arduino Nano for 60 seconds! Set to Offline.");
+  }
+
   // שליחת בקשת נתונים כל 3 שניות
   if (now - lastPollTime > 3000) {
     lastPollTime = now;
     SerialNano.println("GET:STATUS");
     
-    // אם הלוג מופעל, מתזמנים שליחת נתוני לוג
     if (logEnabled) {
       logPendingSend = true;
       logScheduledTime = now + 400;
     }
   }
 
-  // שליחת פקודת בקשת לוג
   if (logPendingSend && now >= logScheduledTime) {
     logPendingSend = false;
     SerialNano.println("GET:LOG");
@@ -232,7 +267,6 @@ void handleArduinoComm() {
       }
     } else {
       inputBuffer += c;
-      // חגורת בטיחות: איפוס הזיכרון אם נוצרת מחרוזת ארוכה מדי עקב רעש או חוסר בתו ירידת שורה
       if (inputBuffer.length() > 1024) {
         inputBuffer = "";
       }

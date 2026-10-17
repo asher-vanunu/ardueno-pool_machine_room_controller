@@ -2,13 +2,18 @@
 #include "Config.h"
 #include "ModbusManager.h"
 #include "ArduinoCommManager.h"
-#include "OTAManager.h"   // נוסף כדי לאפשר performHardReset() דרך MQTT
+#include "OTAManager.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "NanoFlasher.h"
 
 static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
+
+void publishNanoAvailability(bool isAvailable) {
+  if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
+  mqttClient.publish("pool/heating/status", isAvailable ? "online" : "offline", true);
+}
 
 void publishPumpTelemetry(bool isRunning, uint16_t capacityPct, uint16_t powerW, uint16_t flowM3H, float energyKWh, const char* modeStr) {
   if (WiFi.status() != WL_CONNECTED || !mqttClient.connected()) return;
@@ -85,12 +90,12 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   else if (strcmp(topic, "pool/pump/set_flow") == 0) {
     uint16_t targetFlow = atoi(message);
     requestPumpFlowChange(targetFlow); 
-    mqttClient.publish("pool/pump/mode", "Auto Inverter", true); // עדכון מיידי ל-UI
+    mqttClient.publish("pool/pump/mode", "Auto Inverter", true);
   }
   else if (strcmp(topic, "pool/pump/set_capacity") == 0) {
     uint16_t targetCap = atoi(message);
     requestPumpCapacityChange(targetCap);
-    mqttClient.publish("pool/pump/mode", "Manual Inverter", true); // עדכון מיידי ל-UI
+    mqttClient.publish("pool/pump/mode", "Manual Inverter", true);
   }
   else if (strcmp(topic, "pool/pump/set_mode") == 0) {
     if (strcmp(message, "Auto Inverter") == 0) {
@@ -174,6 +179,7 @@ static void reconnectMQTT() {
         mqttClient.subscribe("pool/control/esp_reset/set");
 
         publishSystemMode(digitalRead(SYSTEM_POWER_RELAY_PIN) == HIGH);
+        publishNanoAvailability(isNanoAvailable());
         mqttClient.publish("pool/pump/modbus_link_state", isModbusEnabled() ? "ON" : "OFF", true);
       }
     }

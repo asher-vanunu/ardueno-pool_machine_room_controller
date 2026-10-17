@@ -21,6 +21,9 @@ void pauseArduinoComm();
 void resumeArduinoComm();
 HardwareSerial& getNanoSerial();
 
+// בדיקת זמינות הנאנו
+bool isNanoAvailable();
+
 // פונקציות עבור שליטה בלוג הדיאגנוסטיקה
 void setNanoLogEnabled(bool enabled);
 bool isNanoLogEnabled();
